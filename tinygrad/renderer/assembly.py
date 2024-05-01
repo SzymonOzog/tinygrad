@@ -114,7 +114,9 @@ def uops_to_asm(lang:AssemblyLanguage, function_name:str, _uops:UOpGraph) -> str
   for pointer_op in list(filter(lambda uop: uop.uop in [UOps.LOAD, UOps.STORE], uops.uops)): ptr_ar(pointer_op, uops)
   uops.remove_childless(set(x for x in uops if x.uop in {UOps.DEFINE_GLOBAL, UOps.PHI, UOps.ENDIF, UOps.ENDLOOP, UOps.STORE}))
   uops.optimize_loops()
+  # uops.print()
   optimize_gated_loads(uops)
+  # uops.uops = uops.optimize_ordering(uops.uops)
 
   def kk(*s: str): kernel.append("\n".join(s))
 
@@ -305,6 +307,334 @@ class PTXLanguage(AssemblyLanguage):
     return [f"cvt{rnd}.{self.types[dtype]}.{self.types[atype]} {d}, {a};"]
 
   def render_kernel(self, kernel, function_name, bufs, regs) -> str:
+    if False:
+      return""".version 7.5
+.target sm_86
+.address_size 64
+.visible .entry r_11_8_16_3_2_12966_3_3_4n1(
+        .param .u64 data0,
+        .param .u64 data1,
+        .param .u64 data2,
+        .param .u64 data3
+)
+{
+        .reg            .u64 %dat_u64_<4>;
+        .reg            .f32 %acc_f32_<9>;
+        .reg            .s32 %const_s32_<29>;
+        .reg            .s32 %alu_s32_<23>;
+        .reg            .u64 %cast_u64_<4>;
+        .reg            .u64 %alu_u64_<4>;
+        .reg            .f16 %val_f16_<33>;
+        .reg            .s32 %ridx_s32_<1>;
+        .reg            .f16 %alu_f16_<45>;
+        .reg            .f32 %cast_f32_<36>;
+        .reg            .f32 %alu_f32_<36>;
+        .reg            .pred %pred_pred_<1>;
+        .reg            .f16 %cast_f16_<9>;
+        .reg            .u32 %lidx4;
+        .reg            .u32 %lidx3;
+        .reg            .u32 %lidx2;
+        .reg            .u32 %gidx1;
+        .reg            .u32 %gidx0;
+        ld.param.u64    %dat_u64_0, [data0+0];
+        ld.param.u64    %dat_u64_1, [data1+0];
+        ld.param.u64    %dat_u64_2, [data2+0];
+        ld.param.u64    %dat_u64_3, [data3+0];
+        mov.u32         %gidx0, %ctaid.y;
+        mov.u32         %gidx1, %ctaid.x;
+        mov.u32         %lidx2, %tid.z;
+        mov.u32         %lidx3, %tid.y;
+        mov.u32         %lidx4, %tid.x;
+        mov.b32         %acc_f32_0, 0f00000000;
+        mov.b32         %acc_f32_1, 0f00000000;
+        mov.b32         %acc_f32_2, 0f00000000;
+        mov.b32         %acc_f32_3, 0f00000000;
+        mov.b32         %acc_f32_4, 0f00000000;
+        mov.b32         %acc_f32_5, 0f00000000;
+        mov.b32         %acc_f32_6, 0f00000000;
+        mov.b32         %acc_f32_7, 0f00000000;
+        mov.b32         %acc_f32_8, 0f00000000;
+        mov.b32         %const_s32_0, 0;
+        mov.b32         %const_s32_1, 12966;
+        mov.b32         %const_s32_2, 466776;
+        mul.lo.s32      %alu_s32_0, %gidx0, %const_s32_2;
+        mov.b32         %const_s32_3, 155592;
+        mul.lo.s32      %alu_s32_1, %lidx3, %const_s32_3;
+        add.s32         %alu_s32_2, %alu_s32_0, %alu_s32_1;
+        mov.b32         %const_s32_4, 5134536;
+        mul.lo.s32      %alu_s32_3, %lidx4, %const_s32_4;
+        add.s32         %alu_s32_4, %alu_s32_2, %alu_s32_3;
+        mov.b32         %const_s32_5, 4;
+        mov.b32         %const_s32_6, 48;
+        mul.lo.s32      %alu_s32_5, %gidx1, %const_s32_6;
+        mov.b32         %const_s32_7, 3;
+        mul.lo.s32      %alu_s32_6, %lidx2, %const_s32_7;
+        add.s32         %alu_s32_7, %alu_s32_5, %alu_s32_6;
+        mov.b32         %const_s32_8, 1536;
+        mov.b32         %const_s32_9, 1152;
+        mov.b32         %const_s32_10, 3456;
+        mul.lo.s32      %alu_s32_8, %gidx0, %const_s32_10;
+        add.s32         %alu_s32_9, %alu_s32_8, %alu_s32_5;
+        add.s32         %alu_s32_10, %alu_s32_9, %alu_s32_6;
+        mul.lo.s32      %alu_s32_11, %lidx3, %const_s32_9;
+        add.s32         %alu_s32_12, %alu_s32_10, %alu_s32_11;
+        mov.b32         %const_s32_11, 38016;
+        mul.lo.s32      %alu_s32_13, %lidx4, %const_s32_11;
+        add.s32         %alu_s32_14, %alu_s32_12, %alu_s32_13;
+        mov.b32         %const_s32_12, 2;
+        mul.lo.s32      %alu_s32_15, %alu_s32_12, %const_s32_12;
+        mov.b32         %const_s32_13, 0;
+        cvt.u64.s32     %cast_u64_0, %alu_s32_15;
+        add.u64         %alu_u64_0, %dat_u64_3, %cast_u64_0;
+        ld.global.b16   %val_f16_0, [%alu_u64_0+0];
+        ld.global.b16   %val_f16_1, [%alu_u64_0+2];
+        mov.b32         %const_s32_14, 4;
+        ld.global.b16   %val_f16_2, [%alu_u64_0+4];
+        mov.b32         %const_s32_15, 768;
+        ld.global.b16   %val_f16_3, [%alu_u64_0+768];
+        mov.b32         %const_s32_16, 770;
+        ld.global.b16   %val_f16_4, [%alu_u64_0+770];
+        mov.b32         %const_s32_17, 772;
+        ld.global.b16   %val_f16_5, [%alu_u64_0+772];
+        mov.b32         %const_s32_18, 1536;
+        ld.global.b16   %val_f16_6, [%alu_u64_0+1536];
+        mov.b32         %const_s32_19, 1538;
+        ld.global.b16   %val_f16_7, [%alu_u64_0+1538];
+        mov.b32         %const_s32_20, 1540;
+        ld.global.b16   %val_f16_8, [%alu_u64_0+1540];
+        mov.b32         %const_s32_21, 0;
+        mov.b32         %const_s32_22, 103728;
+        mov.b32         %const_s32_23, 207456;
+        mov.b32         %const_s32_24, 0;
+        mov.b32         %const_s32_25, 2304;
+        mov.b32         %const_s32_26, 2306;
+        mov.b32         %const_s32_27, 2308;
+        mul.lo.s32      %alu_s32_16, %alu_s32_14, %const_s32_12;
+        mov.b32         %const_s32_28, 0;
+        cvt.u64.s32     %cast_u64_1, %alu_s32_16;
+        add.u64         %alu_u64_1, %dat_u64_0, %cast_u64_1;
+        mov.u32         %ridx_s32_0, %const_s32_0;
+$loop_0:
+        mul.lo.s32      %alu_s32_17, %ridx_s32_0, %const_s32_5;
+        add.s32         %alu_s32_18, %alu_s32_4, %alu_s32_17;
+        mul.lo.s32      %alu_s32_19, %alu_s32_18, %const_s32_12;
+        cvt.u64.s32     %cast_u64_2, %alu_s32_19;
+        add.u64         %alu_u64_2, %dat_u64_1, %cast_u64_2;
+        ld.global.b16        %val_f16_9, [%alu_u64_2+0];
+        ld.global.b16        %val_f16_10, [%alu_u64_2+2];
+        ld.global.b16        %val_f16_11, [%alu_u64_2+4];
+        ld.global.b16        %val_f16_12, [%alu_u64_2+6];
+        ld.global.b16        %val_f16_13, [%alu_u64_2+103728];
+        ld.global.b16        %val_f16_14, [%alu_u64_2+103730];
+        ld.global.b16        %val_f16_15, [%alu_u64_2+103732];
+        ld.global.b16        %val_f16_16, [%alu_u64_2+103734];
+        ld.global.b16        %val_f16_17, [%alu_u64_2+207456];
+        ld.global.b16        %val_f16_18, [%alu_u64_2+207458];
+        ld.global.b16        %val_f16_19, [%alu_u64_2+207460];
+        ld.global.b16        %val_f16_20, [%alu_u64_2+207462];
+        mul.lo.s32      %alu_s32_20, %ridx_s32_0, %const_s32_8;
+        add.s32         %alu_s32_21, %alu_s32_7, %alu_s32_20;
+        mul.lo.s32      %alu_s32_22, %alu_s32_21, %const_s32_12;
+        cvt.u64.s32     %cast_u64_3, %alu_s32_22;
+        add.u64         %alu_u64_3, %dat_u64_2, %cast_u64_3;
+        ld.global.b16   %val_f16_21, [%alu_u64_3+0];
+        ld.global.b16   %val_f16_22, [%alu_u64_3+2];
+        ld.global.b16   %val_f16_23, [%alu_u64_3+4];
+        ld.global.b16   %val_f16_24, [%alu_u64_3+768];
+        ld.global.b16   %val_f16_25, [%alu_u64_3+770];
+        ld.global.b16   %val_f16_26, [%alu_u64_3+772];
+        ld.global.b16   %val_f16_27, [%alu_u64_3+1536];
+        ld.global.b16   %val_f16_28, [%alu_u64_3+1538];
+        ld.global.b16   %val_f16_29, [%alu_u64_3+1540];
+        ld.global.b16   %val_f16_30, [%alu_u64_3+2304];
+        ld.global.b16   %val_f16_31, [%alu_u64_3+2306];
+        ld.global.b16   %val_f16_32, [%alu_u64_3+2308];
+
+        mul.f16         %alu_f16_0, %val_f16_9, %val_f16_21;
+        cvt.f32.f16     %cast_f32_0, %alu_f16_0;
+        add.f32         %alu_f32_0, %cast_f32_9, %cast_f32_0;
+
+        mul.f16         %alu_f16_1, %val_f16_9, %val_f16_22;
+        cvt.f32.f16     %cast_f32_1, %alu_f16_1;
+        add.f32         %alu_f32_1, %cast_f32_10, %cast_f32_1;
+
+        mul.f16         %alu_f16_2, %val_f16_9, %val_f16_23;
+        cvt.f32.f16     %cast_f32_2, %alu_f16_2;
+        add.f32         %alu_f32_2, %cast_f32_11, %cast_f32_2;
+
+        mul.f16         %alu_f16_3, %val_f16_13, %val_f16_21;
+        cvt.f32.f16     %cast_f32_3, %alu_f16_3;
+        add.f32         %alu_f32_3, %cast_f32_12, %cast_f32_3;
+
+        mul.f16         %alu_f16_4, %val_f16_13, %val_f16_22;
+        cvt.f32.f16     %cast_f32_4, %alu_f16_4;
+        add.f32         %alu_f32_4, %cast_f32_13, %cast_f32_4;
+
+        mul.f16         %alu_f16_5, %val_f16_13, %val_f16_23;
+        cvt.f32.f16     %cast_f32_5, %alu_f16_5;
+        add.f32         %alu_f32_5, %cast_f32_14, %cast_f32_5;
+
+        mul.f16         %alu_f16_6, %val_f16_17, %val_f16_21;
+        cvt.f32.f16     %cast_f32_6, %alu_f16_6;
+        add.f32         %alu_f32_6, %cast_f32_15, %cast_f32_6;
+
+        mul.f16         %alu_f16_7, %val_f16_17, %val_f16_22;
+        cvt.f32.f16     %cast_f32_7, %alu_f16_7;
+        add.f32         %alu_f32_7, %cast_f32_16, %cast_f32_7;
+
+        mul.f16         %alu_f16_8, %val_f16_17, %val_f16_23;
+        cvt.f32.f16     %cast_f32_8, %alu_f16_8;
+        add.f32         %alu_f32_8, %cast_f32_17, %cast_f32_8;
+
+        mul.f16         %alu_f16_9, %val_f16_10, %val_f16_24;
+        cvt.f32.f16     %cast_f32_9, %alu_f16_9;
+        add.f32         %alu_f32_9, %cast_f32_18, %alu_f32_0;
+
+        mul.f16         %alu_f16_10, %val_f16_10, %val_f16_25;
+        cvt.f32.f16     %cast_f32_10, %alu_f16_10;
+        add.f32         %alu_f32_10, %cast_f32_19, %alu_f32_1;
+
+        mul.f16         %alu_f16_11, %val_f16_10, %val_f16_26;
+        cvt.f32.f16     %cast_f32_11, %alu_f16_11;
+        add.f32         %alu_f32_11, %cast_f32_20, %alu_f32_2;
+
+        mul.f16         %alu_f16_12, %val_f16_14, %val_f16_24;
+        cvt.f32.f16     %cast_f32_12, %alu_f16_12;
+        add.f32         %alu_f32_12, %cast_f32_21, %alu_f32_3;
+
+        mul.f16         %alu_f16_13, %val_f16_14, %val_f16_25;
+        cvt.f32.f16     %cast_f32_13, %alu_f16_13;
+        add.f32         %alu_f32_13, %cast_f32_22, %alu_f32_4;
+
+        mul.f16         %alu_f16_14, %val_f16_14, %val_f16_26;
+        cvt.f32.f16     %cast_f32_14, %alu_f16_14;
+        add.f32         %alu_f32_14, %cast_f32_23, %alu_f32_5;
+
+        mul.f16         %alu_f16_15, %val_f16_18, %val_f16_24;
+        cvt.f32.f16     %cast_f32_15, %alu_f16_15;
+        add.f32         %alu_f32_15, %cast_f32_24, %alu_f32_6;
+
+        mul.f16         %alu_f16_16, %val_f16_18, %val_f16_25;
+        cvt.f32.f16     %cast_f32_16, %alu_f16_16;
+        add.f32         %alu_f32_16, %cast_f32_25, %alu_f32_7;
+
+        mul.f16         %alu_f16_17, %val_f16_18, %val_f16_26;
+        cvt.f32.f16     %cast_f32_17, %alu_f16_17;
+        add.f32         %alu_f32_17, %cast_f32_26, %alu_f32_8;
+
+        mul.f16         %alu_f16_18, %val_f16_11, %val_f16_27;
+        cvt.f32.f16     %cast_f32_18, %alu_f16_18;
+        add.f32         %alu_f32_18, %cast_f32_27, %alu_f32_9;
+
+        mul.f16         %alu_f16_19, %val_f16_11, %val_f16_28;
+        cvt.f32.f16     %cast_f32_19, %alu_f16_19;
+        add.f32         %alu_f32_19, %cast_f32_28, %alu_f32_10;
+
+        mul.f16         %alu_f16_20, %val_f16_11, %val_f16_29;
+        cvt.f32.f16     %cast_f32_20, %alu_f16_20;
+        add.f32         %alu_f32_20, %cast_f32_29, %alu_f32_11;
+
+        mul.f16         %alu_f16_21, %val_f16_15, %val_f16_27;
+        cvt.f32.f16     %cast_f32_21, %alu_f16_21;
+        add.f32         %alu_f32_21, %cast_f32_30, %alu_f32_12;
+
+        mul.f16         %alu_f16_22, %val_f16_15, %val_f16_28;
+        cvt.f32.f16     %cast_f32_22, %alu_f16_22;
+        add.f32         %alu_f32_22, %cast_f32_31, %alu_f32_13;
+
+        mul.f16         %alu_f16_23, %val_f16_15, %val_f16_29;
+        cvt.f32.f16     %cast_f32_23, %alu_f16_23;
+        add.f32         %alu_f32_23, %cast_f32_32, %alu_f32_14;
+
+        mul.f16         %alu_f16_24, %val_f16_19, %val_f16_27;
+        cvt.f32.f16     %cast_f32_24, %alu_f16_24;
+        add.f32         %alu_f32_24, %cast_f32_33, %alu_f32_15;
+
+        mul.f16         %alu_f16_25, %val_f16_19, %val_f16_28;
+        cvt.f32.f16     %cast_f32_25, %alu_f16_25;
+        add.f32         %alu_f32_25, %cast_f32_34, %alu_f32_16;
+
+        mul.f16         %alu_f16_26, %val_f16_19, %val_f16_29;
+        cvt.f32.f16     %cast_f32_26, %alu_f16_26;
+        add.f32         %alu_f32_26, %cast_f32_35, %alu_f32_17;
+
+        mul.f16         %alu_f16_27, %val_f16_12, %val_f16_30;
+        cvt.f32.f16     %cast_f32_27, %alu_f16_27;
+        add.f32         %alu_f32_27, %alu_f32_18, %acc_f32_0;
+
+        mul.f16         %alu_f16_28, %val_f16_12, %val_f16_31;
+        cvt.f32.f16     %cast_f32_28, %alu_f16_28;
+        add.f32         %alu_f32_28, %alu_f32_19, %acc_f32_1;
+
+        mul.f16         %alu_f16_29, %val_f16_12, %val_f16_32;
+        cvt.f32.f16     %cast_f32_29, %alu_f16_29;
+        add.f32         %alu_f32_29, %alu_f32_20, %acc_f32_2;
+
+        mul.f16         %alu_f16_30, %val_f16_16, %val_f16_30;
+        cvt.f32.f16     %cast_f32_30, %alu_f16_30;
+        add.f32         %alu_f32_30, %alu_f32_21, %acc_f32_3;
+
+        mul.f16         %alu_f16_31, %val_f16_16, %val_f16_31;
+        cvt.f32.f16     %cast_f32_31, %alu_f16_31;
+        add.f32         %alu_f32_31, %alu_f32_22, %acc_f32_4;
+
+        mul.f16         %alu_f16_32, %val_f16_16, %val_f16_32;
+        cvt.f32.f16     %cast_f32_32, %alu_f16_32;
+        add.f32         %alu_f32_32, %alu_f32_23, %acc_f32_5;
+
+        mul.f16         %alu_f16_33, %val_f16_20, %val_f16_30;
+        cvt.f32.f16     %cast_f32_33, %alu_f16_33;
+        add.f32         %alu_f32_33, %alu_f32_24, %acc_f32_6;
+
+        mul.f16         %alu_f16_34, %val_f16_20, %val_f16_31;
+        cvt.f32.f16     %cast_f32_34, %alu_f16_34;
+        mul.f16         %alu_f16_35, %val_f16_20, %val_f16_32;
+        cvt.f32.f16     %cast_f32_35, %alu_f16_35;
+
+        mov.b32         %acc_f32_0, %alu_f32_27;
+        mov.b32         %acc_f32_1, %alu_f32_28;
+        mov.b32         %acc_f32_2, %alu_f32_29;
+        mov.b32         %acc_f32_3, %alu_f32_30;
+        mov.b32         %acc_f32_4, %alu_f32_31;
+        mov.b32         %acc_f32_5, %alu_f32_32;
+        mov.b32         %acc_f32_6, %alu_f32_33;
+        add.f32         %alu_f32_34, %alu_f32_25, %acc_f32_7;
+        mov.b32         %acc_f32_7, %alu_f32_34;
+        add.f32         %alu_f32_35, %alu_f32_26, %acc_f32_8;
+        mov.b32         %acc_f32_8, %alu_f32_35;
+        add.s32         %ridx_s32_0, %ridx_s32_0, 1;
+        setp.lt.s32     %pred_pred_0, %ridx_s32_0, %const_s32_1;
+        @%pred_pred_0   bra $loop_0;
+        cvt.rn.f16.f32  %cast_f16_0, %acc_f32_0;
+        cvt.rn.f16.f32  %cast_f16_1, %acc_f32_1;
+        cvt.rn.f16.f32  %cast_f16_2, %acc_f32_2;
+        cvt.rn.f16.f32  %cast_f16_3, %acc_f32_3;
+        cvt.rn.f16.f32  %cast_f16_4, %acc_f32_4;
+        cvt.rn.f16.f32  %cast_f16_5, %acc_f32_5;
+        cvt.rn.f16.f32  %cast_f16_6, %acc_f32_6;
+        cvt.rn.f16.f32  %cast_f16_7, %acc_f32_7;
+        cvt.rn.f16.f32  %cast_f16_8, %acc_f32_8;
+        add.f16         %alu_f16_36, %cast_f16_0, %val_f16_0;
+        add.f16         %alu_f16_37, %cast_f16_1, %val_f16_1;
+        add.f16         %alu_f16_38, %cast_f16_2, %val_f16_2;
+        add.f16         %alu_f16_39, %cast_f16_3, %val_f16_3;
+        add.f16         %alu_f16_40, %cast_f16_4, %val_f16_4;
+        add.f16         %alu_f16_41, %cast_f16_5, %val_f16_5;
+        add.f16         %alu_f16_42, %cast_f16_6, %val_f16_6;
+        add.f16         %alu_f16_43, %cast_f16_7, %val_f16_7;
+        add.f16         %alu_f16_44, %cast_f16_8, %val_f16_8;
+        st.global.b16   [%alu_u64_1+0], %alu_f16_36;
+        st.global.b16   [%alu_u64_1+2], %alu_f16_37;
+        st.global.b16   [%alu_u64_1+4], %alu_f16_38;
+        st.global.b16   [%alu_u64_1+768], %alu_f16_39;
+        st.global.b16   [%alu_u64_1+770], %alu_f16_40;
+        st.global.b16   [%alu_u64_1+772], %alu_f16_41;
+        st.global.b16   [%alu_u64_1+1536], %alu_f16_42;
+        st.global.b16   [%alu_u64_1+1538], %alu_f16_43;
+        st.global.b16   [%alu_u64_1+1540], %alu_f16_44;
+        ret;
+}
+"""
     kernel = [f".reg .{reg.split('_')[-2]} %{reg}<{cnt}>;" for reg,cnt in regs] + kernel + ["ret;"]
     def fmt(line): return line if line[0]=="$" else "\t" + line.replace(" ", "\t" if len(line.split(" ")[0]) > 7 else "\t\t", 1)
     return (f"{self.kernel_prefix} {function_name}(\n\t" +

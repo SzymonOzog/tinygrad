@@ -150,14 +150,22 @@ class UOpGraph:
             f"{str([self.uops.index(x) for x in u.vin]):32s} {u.arg}")
 
   def add(self, uop:UOps, dtype:Optional[DType]=None, vin:Tuple[UOp, ...]=tuple(), arg:Any=None, cachable=True, insert_before=None,
-          simplify=True) -> UOp:
-    return self.add_op(UOp(uop, dtype, vin, arg) if uop is not UOps.CONST else UOp.const(dtype, arg), cachable, insert_before, simplify)
+          simplify=True, xxx=False) -> UOp:
+    return self.add_op(UOp(uop, dtype, vin, arg) if uop is not UOps.CONST else UOp.const(dtype, arg), cachable, insert_before, simplify, xxx=xxx)
 
-  def add_op(self, op:UOp, cachable=True, insert_before=None, simplify=True) -> UOp:
+  def add_op(self, op:UOp, cachable=True, insert_before=None, simplify=True, xxx=False) -> UOp:
     if simplify and (rewritten:=constant_folder.rewrite(op)) is not None:
       if rewritten in self.uops: return rewritten  # ignore cachable
       op = rewritten
     key = (op.uop, op.dtype, op.vin, op.arg)
+    # if op.uop is UOps.ALU and op.vin[0].uop is UOps.PHI and op.vin[1].uop is UOps.CONST and op.vin[1].arg == 0:
+    #   print("found")
+    # if insert_before is None and xxx: insert_before = max([self.uops.index(vv) for vv in op.vin])+1 if op.uop in [UOps.CAST, UOps.ALU] else len(self.uops)
+    # if insert_before is None: 
+    #   if op.uop in [UOps.CAST, UOps.ALU] and all([vv.uop is not UOps.PHI for vv in op.vin]):
+    #     insert_before = max([self.uops.index(vv) for vv in op.vin])+1  
+    #   else:
+    #     insert_before = len(self.uops)
     if insert_before is None: insert_before = len(self.uops)
     # check if the cached expr is valid with the given insert place.
     if cachable and (expr:=self.saved_exprs.get(key, None)) is not None and self.uops.index(expr) <= insert_before: return expr
@@ -359,6 +367,21 @@ class UOpGraph:
     # uops optimization
     while self.uops_optimization(get_recursive_parents): pass
     self.simplify_phi_loops(get_recursive_parents)
+
+  def optimize_ordering(self, block):
+    endif = next(filter(lambda x: x.uop in [UOps.ENDLOOP, UOps.ENDIF], list(reversed(block))), None)
+    if endif is not None:
+      if_idx = block.index(endif.vin[0])
+      endif_idx = block.index(endif)
+      return self.optimize_ordering(block[:if_idx]) + self.optimize_ordering(block[if_idx:endif_idx]) + [endif] + self.optimize_ordering(block[endif_idx+1:])
+    def successors(uop): return list(filter(lambda u: uop in u.vin, block))
+    for uu in reversed(block):
+      if len(succ:=successors(uu)) and uu.uop in [UOps.ALU, UOps.CAST, UOps.PHI, UOps.LOAD]:
+        ni = min([block.index(scc) for scc in succ])
+        # print("changing order of ", uu, ni, block.index(uu))
+        block.insert(ni-1, block.pop(block.index(uu)))
+    return block
+    
 
   def uoptimize(self):
     self.optimize_loops()

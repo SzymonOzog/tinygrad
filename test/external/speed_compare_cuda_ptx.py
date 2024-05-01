@@ -24,6 +24,7 @@ if __name__ == "__main__":
   if single != -1: ast_strs = ast_strs[single:single+1]
 
   average_tm_cuda, average_tm_ptx = 0, 0
+  long = []
   for num,ast in enumerate(ast_strs):
     # cuda compile
     lin = ast_str_to_lin(ast, opts=dev.compiler.compiler_opts)
@@ -51,13 +52,18 @@ if __name__ == "__main__":
       tm_cuda.append(cuda_prg(bufs, {}, wait=True))
       tm_ptx.append(ptx_prg(bufs, {}, wait=True))
     average_tm_cuda += min(tm_cuda)
+    # if min(tm_cuda) < 0.001: continue
     average_tm_ptx += min(tm_ptx)
     ratio = min(tm_ptx)/min(tm_cuda)
     print(f"{average_tm_ptx/average_tm_cuda:5.2f}x -- {num:4d} {colorize_float(ratio)}  {min(tm_ptx)*1e6:7.2f} us", lin.name)
-    if ratio > 1.5:
+    if ratio > 1.1:
+      long.append((num, min(tm_ptx), ratio))
       def fix(x): return x.replace('\t', ' ').strip()
       ll1, ll2 = cuda_prg.lib.decode().split('\n'), ptx_src.split('\n')
       if single != -1:
         for ln, (l1, l2) in enumerate(itertools.zip_longest(ll1, ll2, fillvalue='')):
           print(f"{ln:5d} | {fix(l1):80s} | {fix(l2):80s}")
       print(len(ll1), len(ll2), "RATIO", ratio, "us", min(tm_ptx)*1e6)
+  for i, l in enumerate(sorted(long, key=lambda x: x[1]/(average_tm_ptx/average_tm_cuda))):
+    print(f"{i}: {l[0]}, {l[1]*1e6:7.2f} us, {l[2]}")
+  print("total = ", average_tm_ptx/average_tm_cuda)
