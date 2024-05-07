@@ -368,19 +368,36 @@ class UOpGraph:
     while self.uops_optimization(get_recursive_parents): pass
     self.simplify_phi_loops(get_recursive_parents)
 
-  def optimize_ordering(self, block):
-    endif = next(filter(lambda x: x.uop in [UOps.ENDLOOP, UOps.ENDIF], list(reversed(block))), None)
-    if endif is not None:
-      if_idx = block.index(endif.vin[0])
-      endif_idx = block.index(endif)
-      return self.optimize_ordering(block[:if_idx]) + self.optimize_ordering(block[if_idx:endif_idx]) + [endif] + self.optimize_ordering(block[endif_idx+1:])
-    def successors(uop): return list(filter(lambda u: uop in u.vin, block))
-    for uu in reversed(block):
-      if len(succ:=successors(uu)) and uu.uop in [UOps.ALU, UOps.CAST, UOps.PHI, UOps.LOAD]:
-        ni = min([block.index(scc) for scc in succ])
-        # print("changing order of ", uu, ni, block.index(uu))
-        block.insert(ni-1, block.pop(block.index(uu)))
-    return block
+  # def optimize_ordering(self, block):
+  #   endif = next(filter(lambda x: x.uop in [UOps.ENDLOOP, UOps.ENDIF], list(reversed(block))), None)
+  #   if endif is not None:
+  #     def if_idx(): return block.index(endif.vin[0])
+  #     def endif_idx(): return block.index(endif)
+  #     return self.optimize_ordering(block[:if_idx()]) + self.optimize_ordering(block[if_idx():endif_idx()]) + [endif] + self.optimize_ordering(block[endif_idx()+1:])
+  #   def successors(uop): return list(filter(lambda u: uop in u.vin, block))
+  #   for uu in reversed(block):
+  #     if len(succ:=successors(uu)) and uu.uop in [UOps.ALU, UOps.CAST, UOps.PHI, UOps.LOAD, UOps.GEP]:
+  #       ni = min([block.index(scc) for scc in succ])
+  #       si = block.index(uu)
+  #       if ni != si:
+  #         # print("changing order of ", uu, ni, block.index(uu))
+  #         block.insert(ni-1, block.pop(block.index(uu)))
+  #         if uu.uop is UOps.LOAD and ni-si > 2: block.insert(block.index(uu)+1, UOp(UOps.BARRIER, None, tuple(), None))
+  #   return block
+
+  # def optimize_ordering(self, block):
+  #   endif = next(filter(lambda x: x.uop in [UOps.ENDLOOP, UOps.ENDIF], list(reversed(block))), None)
+  #   if endif is not None:
+  #     if_idx = block.index(endif.vin[0])
+  #     endif_idx = block.index(endif)
+  #     return self.optimize_ordering(block[:if_idx]) + self.optimize_ordering(block[if_idx:endif_idx]) + [endif] + self.optimize_ordering(block[endif_idx+1:])
+  #   def successors(uop): return list(filter(lambda u: uop in u.vin, block))
+  #   for uu in reversed(block):
+  #     if len(succ:=successors(uu)) and uu.uop in [UOps.ALU, UOps.CAST, UOps.PHI, UOps.LOAD]:
+  #       ni = min([block.index(scc) for scc in succ])
+  #       # print("changing order of ", uu, ni, block.index(uu))
+  #       block.insert(ni-1, block.pop(block.index(uu)))
+  #   return block
     
 
   def uoptimize(self):
