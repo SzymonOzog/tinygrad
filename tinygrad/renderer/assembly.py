@@ -36,20 +36,34 @@ def ptr_ar(root, uops):
 def optimize_gated_loads(uops: UOpGraph):
   @functools.lru_cache(None)
   def successors(uop): return list(filter(lambda u: uop in u.vin, uops.uops))
-  # def successors_idx(uop): return [i for i, u in enumerate(uops.uops[uops.uops.index(uop):]) if uop in u.vin]
   for gl in list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops)):
     pred_2 = uops.add(UOps.ALU, dtypes.bool, (gl.vin[2],), arg=UnaryOps.NEG, insert_before=uops.uops.index(gl))
     gate = uops.add(UOps.IF, None, (pred_2,), insert_before=uops.uops.index(gl), cachable=False)
     end = uops.add(UOps.ENDIF, None, (gate,), arg=(gl, gl.vin[3]), insert_before=uops.uops.index(gl)+1, cachable=False)
-  for end in filter(lambda x: x.uop is UOps.ENDIF, list(reversed(uops.uops))):
-    gate = end.vin[0]
+  for gl in list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops)):
+    queue = list(gl.vin)
     gi, ei = uops.uops.index(gate), uops.uops.index(end)
-    for u in reversed(uops.uops.copy()[:uops.uops.index(gate)]):
+    while queue:
+      u = queue.pop()
       scc = successors(u)
+      inces = [uops.uops.index(x) for x in scc]
       if (u.uop not in [UOps.DEFINE_GLOBAL, UOps.DEFINE_VAR, UOps.DEFINE_LOCAL, UOps.PHI, UOps.STORE, UOps.LOAD, UOps.ENDIF, UOps.ENDLOOP] and
-          all([s>gi and s<ei for s in [uops.uops.index(x) for x in scc]])):
-        uops.uops.insert(uops.uops.index(gate), uops.uops.pop(uops.uops.index(u)))
+          all([s>gi and s<ei for s in inces])):
+        uops.uops.insert(gi, uops.uops.pop(uops.uops.index(u)))
         gi, ei = uops.uops.index(gate), uops.uops.index(end)
+        queue.extend(list(u.vin))
+      
+
+  # for end in filter(lambda x: x.uop is UOps.ENDIF, list(reversed(uops.uops))):
+  #   gate = end.vin[0]
+  #   gi, ei = uops.uops.index(gate), uops.uops.index(end)
+  #   for u in reversed(uops.uops[:gi].copy()):
+  #     scc = successors(u)
+  #     inces = [uops.uops.index(x) for x in scc]
+  #     if (u.uop not in [UOps.DEFINE_GLOBAL, UOps.DEFINE_VAR, UOps.DEFINE_LOCAL, UOps.PHI, UOps.STORE, UOps.LOAD, UOps.ENDIF, UOps.ENDLOOP] and
+  #         all([s>gi and s<ei for s in inces])):
+  #       uops.uops.insert(gi, uops.uops.pop(uops.uops.index(u)))
+  #       gi, ei = uops.uops.index(gate), uops.uops.index(end)
 
 class AssemblyLanguage(NamedTuple):
   kernel_prefix: str = ""
