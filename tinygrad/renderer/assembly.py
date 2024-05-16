@@ -34,16 +34,44 @@ def ptr_ar(root, uops):
       fptr = uops.add(UOps.ALU, dtypes.uint64, (root.vin[0], bptr), arg=BinaryOps.ADD, insert_before=uops.uops.index(root))
       root.vin = (fptr, zero) + root.vin[2:]
 
-def optimize_gated_loads(uops: UOpGraph):
-  def successors(uop): return list(filter(lambda u: uop in u.vin, uops.uops))
-  for gl in list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops)):
-    uops.uops.insert(uops.uops.index(gl), gate:=UOp(UOps.IF, None, (gl.vin[2],)))
-    uops.uops.insert(uops.uops.index(gl)+1, end:=UOp(UOps.ENDIF, None, (gate,) + (gl, gl.vin[3])))
-    for u in reversed(uops.uops.copy()[:uops.uops.index(gate)]):
-      if (u.uop not in [UOps.DEFINE_GLOBAL, UOps.DEFINE_VAR, UOps.DEFINE_LOCAL, UOps.PHI, UOps.STORE, UOps.ENDIF, UOps.ENDLOOP] and
-          all(uops.uops.index(s)>uops.uops.index(gate) and uops.uops.index(s)<=uops.uops.index(end) for s in successors(u))):
-        uops.uops.insert(uops.uops.index(gate), uops.uops.pop(uops.uops.index(u)))
-    gl.vin = gl.vin[:2]
+def optimize_gated_loads(uops: UOpGraph, debug=False):
+  if True:
+    def successors(uop): return list(filter(lambda u: uop in u.vin, uops.uops))
+    for gl in list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops)):
+      uops.uops.insert(uops.uops.index(gl), gate:=UOp(UOps.IF, None, (gl.vin[2],)))
+      uops.uops.insert(uops.uops.index(gl)+1, end:=UOp(UOps.ENDIF, None, (gate,) + (gl, gl.vin[3])))
+      for u in reversed(uops.uops.copy()[:uops.uops.index(gate)]):
+        if (u.uop not in [UOps.DEFINE_GLOBAL, UOps.DEFINE_VAR, UOps.DEFINE_LOCAL, UOps.PHI, UOps.STORE, UOps.ENDIF, UOps.ENDLOOP] and
+            all(uops.uops.index(s)>uops.uops.index(gate) and uops.uops.index(s)<=uops.uops.index(end) for s in successors(u))):
+          uops.uops.insert(uops.uops.index(gate), uops.uops.pop(uops.uops.index(u)))
+      gl.vin = gl.vin[:2]
+  else:
+      gated_loads = list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops))
+      def successors(uop): return list(filter(lambda u: uop in u.vin, uops.uops))
+      while gated_loads:
+        same_gate = list(filter(lambda u: u.vin[2] == gated_loads[0].vin[2], gated_loads))
+        for u in reversed(same_gate): uops.uops.insert(uops.uops.index(same_gate[-1]), uops.uops.pop(uops.uops.index(u)))
+        def indices(): return [uops.uops.index(u) for u in same_gate]
+        uops.uops.insert(min(indices()), gate:=UOp(UOps.IF, None, (same_gate[-1].vin[2],)))
+        alts = tuple()
+        for ld in same_gate:
+          alts+=(ld, ld.vin[3])
+          ld.vin = ld.vin[:2]
+        uops.uops.insert(max(indices())+1, end:=UOp(UOps.ENDIF, None, (gate,) + alts))
+        for u in reversed(uops.uops.copy()[:uops.uops.index(gate)]):
+          if (u.uop not in [UOps.DEFINE_GLOBAL, UOps.DEFINE_VAR, UOps.DEFINE_LOCAL, UOps.PHI, UOps.STORE, UOps.ENDIF, UOps.ENDLOOP] and
+              all(uops.uops.index(s)>uops.uops.index(gate) and uops.uops.index(s)<uops.uops.index(end) for s in successors(u))):
+            uops.uops.insert(uops.uops.index(gate), uops.uops.pop(uops.uops.index(u)))
+          elif any(sg in u.vin for sg in same_gate):
+            uops.uops.insert(uops.uops.index(end), uops.uops.pop(uops.uops.index(u)))
+        #if a uop is inside but has successors outside of the if statement move it outside
+        mov_out=[]
+        for u in reversed(uops.uops[uops.uops.index(gate)+1:uops.uops.index(end)]):
+          if u in same_gate or all(
+            [uops.uops.index(s)>uops.uops.index(gate) and uops.uops.index(s)<uops.uops.index(end) and s not in mov_out for s in successors(u)]): continue
+          mov_out.append(u)
+        for u in reversed(mov_out): uops.uops.insert(uops.uops.index(gate), uops.uops.pop(uops.uops.index(u)))
+        gated_loads = [gl for gl in gated_loads if gl not in same_gate]
 
 class PTXRenderer(Renderer):
   device = "CUDA"
@@ -52,7 +80,9 @@ class PTXRenderer(Renderer):
   local_max=[64, 1024, 1024]
   shared_max=49152
   has_tensor_cores = False
-  def __init__(self, arch:str): self.has_tensor_cores=int(arch[3:]) >= 80
+  def __init__(self, arch:str, debug=False):
+      self.has_tensor_cores=int(arch[3:]) >= 80
+      self.debug=debug
 
   # language options
   kernel_prefix = """.version VERSION
@@ -135,6 +165,9 @@ class PTXRenderer(Renderer):
     bufs = []
 
     matcher = PatternMatcher([
+      # *[({"__name__": "root", "uop": UOps.ALU, "arg": BinaryOps.MUL,"dtype": set([dt for dt in dtypes if dtypes.is_int(dt)]),
+      #                                                                            "vin": [{"uop": UOps.CONST, "arg":2**a},{"__name__": x}]},
+      #  lambda root: UOp(UOps.ALU, root.dtype, (x,UOp(UOps.CONST, root.dtype, tuple(), log2(root.arg))), UnaryOps.BSR)) for a in range(64)],
       ({"__name__": "root", "uop": UOps.ALU, "arg": BinaryOps.CMPEQ, "vin": ({"dtype": dtypes.bool},{})},
       lambda root: UOp(UOps.ALU, dtypes.bool, (UOp(root.uop, root.dtype, root.vin, BinaryOps.XOR),), UnaryOps.NEG)),
       ({"__name__": "root", "uop": UOps.ALU, "arg": BinaryOps.CMPLT, "vin": ({"__name__": "x", "dtype": dtypes.bool},{"__name__": "y"})},
@@ -199,7 +232,7 @@ class PTXRenderer(Renderer):
       kk(*self.render_cast((ret:=ssa('cast', u, self.types[dtype])), a, dtype, atype, bitcast))
       return ret
 
-    for u in uops:
+    for i, u in enumerate(uops):
       uop,dtype,vin,args = u.uop,u.dtype,u.vin,u.arg
       if uop is UOps.IF:
         assert vin[0].dtype is not None
@@ -211,11 +244,14 @@ class PTXRenderer(Renderer):
         kk(*self.render_bra(r_label[vin[0]], pred))
       elif uop is UOps.ENDIF:
         kk(f"@{_cast(r[vin[0].vin[0]], dtypes.bool, vin[0].vin[0].dtype, u=u, pred=True)} bra {r_label[vin[0]]}_true;")
+        # kk(f"bra.uni {r_label[vin[0]]}_true;")
         kk(f"{r_label[vin[0]]}:")
-        if len(vin) > 1 and vin[1].dtype.count > 1:
-          kk(*[f"mov.b{self.types[vin[1].dtype.scalar()][1:]} {dd}, {r[vin[2]][i]};" for i, dd in enumerate(r[vin[1]])])
-        elif len(vin) > 1:
-          kk(*[f"mov.b{self.types[vin[1].dtype][1:]} {r[vin[1]]}, {r[vin[2]]};" ])
+        it=iter(vin[1:])
+        for val, alt in list(zip(it,it)):
+          if val.dtype.count > 1:
+            kk(*[f"mov.b{self.types[val.dtype.scalar()][1:]} {dd}, {r[alt][i]};" for i, dd in enumerate(r[val])])
+          else:
+            kk(*[f"mov.b{self.types[val.dtype][1:]} {r[val]}, {r[alt]};" ])
         kk(f"{r_label[vin[0]]}_true:")
       elif uop is UOps.STORE:
         assert vin[0].dtype is not None and vin[1].dtype is not None and vin[2].dtype is not None

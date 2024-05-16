@@ -85,6 +85,7 @@ class PatternMatcher:
       while queue:
         if all([qq in uops.uops for qq in queue[-1].vin]):
           new = uops.add_op(q:=queue.pop(), insert_before=max([0]+[uops.uops.index(vv) for vv in q.vin])+1)
+          # new = uops.add_op(q:=queue.pop(), insert_before=max([uops.uops.index(o) if n == q and False else 0]+[uops.uops.index(vv) for vv in q.vin])+1)
           if new != q:
             for vv in uops.uops + queue: vv.vin = tuple(new if x is q else x for x in vv.vin)
         else: queue.extend([qq for qq in queue[-1].vin if qq not in uops.uops])
@@ -304,6 +305,15 @@ class UOpGraph:
         for alu_with_accum in [op for op in self.uops if accumulator in op.vin]:
           self.replace_op(alu_with_accum, next(op for op in alu_with_accum.vin if op != accumulator))
       get_recursive_parents.cache_clear()
+
+  def optimize_ordering(self, block):
+    def successors(uop): return list(filter(lambda u: uop in u.vin, block))
+    for uu in reversed(block):
+      if len(succ:=successors(uu)) and uu.uop in [UOps.LOAD]:
+        ni = min([block.index(scc) for scc in succ])
+        si = block.index(uu)
+        block.insert(ni-1, block.pop(block.index(uu)))
+    return block
 
   def fix_to_store_directly(self):
     replaced_stores: Dict[UOp,UOp] = {}
