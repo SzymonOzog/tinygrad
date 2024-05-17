@@ -269,12 +269,18 @@ class TestAssembly(unittest.TestCase):
     u7 = uops.add(UOps.CONST, dtypes.bool, tuple(), arg=1)
     u8 = uops.add(UOps.ALU, dtypes.int, (u4, u5), BinaryOps.ADD)
     u9 = uops.add(UOps.LOAD, dtypes.int, (u1, u8, u7, u6))
+    s1 = uops.add(UOps.STORE, dtypes.int, (u1, u2, u9))
+    u10 = uops.add(UOps.CONST, dtypes.int, tuple(), arg=2)
+    u11 = uops.add(UOps.ALU, dtypes.int, (u4, u10), BinaryOps.ADD)
+    u12 = uops.add(UOps.LOAD, dtypes.int, (u1, u11, u7, u6))
     optimize_gated_loads(uops)
     if_op = next(filter(lambda x: x.uop is UOps.IF, uops.uops), None)
     self.assertNotEqual(if_op, None)
-    self.assertNotEqual(next(filter(lambda x: x.uop is UOps.ENDIF, uops.uops), None), None)
-    for uu in [u2, u3, u4, u5, u6, u8, u9]:
+    end_op = next(filter(lambda x: x.uop is UOps.ENDIF, uops.uops), None)
+    self.assertNotEqual(end_op, None)
+    for uu in [u3, u4, u5, u8, u9, u10, u11, u12]:
       self.assertLess(uops.uops.index(if_op), uops.uops.index(uu))
+    self.assertLess(uops.uops.index(end_op), uops.uops.index(s1))
 
 
 if __name__ == '__main__':

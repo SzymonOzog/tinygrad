@@ -35,15 +35,25 @@ def ptr_ar(root, uops):
       root.vin = (fptr, zero) + root.vin[2:]
 
 def optimize_gated_loads(uops: UOpGraph):
+  gated_loads = list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops))
   def successors(uop): return list(filter(lambda u: uop in u.vin, uops.uops))
-  for gl in list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops.uops)):
-    uops.uops.insert(uops.uops.index(gl), gate:=UOp(UOps.IF, None, (gl.vin[2],)))
-    uops.uops.insert(uops.uops.index(gl)+1, end:=UOp(UOps.ENDIF, None, (gate,) + (gl, gl.vin[3])))
+  while gated_loads:
+    same_gate = list(filter(lambda u: u.vin[2] == gated_loads[0].vin[2], gated_loads))
+    gated_loads = [gl for gl in gated_loads if gl not in same_gate]
+    # Group same gate loads together 
+    for u in reversed(same_gate): uops.uops.insert(uops.uops.index(same_gate[-1]), uops.uops.pop(uops.uops.index(u)))
+    uops.uops.insert(min([uops.uops.index(u) for u in same_gate]), gate:=UOp(UOps.IF, None, (same_gate[-1].vin[2],)))
+    uops.uops.insert(max([uops.uops.index(u) for u in same_gate])+1, end:=UOp(UOps.ENDIF, None, (gate,)))
+    for ld in same_gate:
+      end.vin += (ld, ld.vin[3])
+      ld.vin = ld.vin[:2]
     for u in reversed(uops.uops.copy()[:uops.uops.index(gate)]):
+      # Move parents inside IF
       if (u.uop not in [UOps.DEFINE_GLOBAL, UOps.DEFINE_VAR, UOps.DEFINE_LOCAL, UOps.PHI, UOps.STORE, UOps.ENDIF, UOps.ENDLOOP] and
           all(uops.uops.index(s)>uops.uops.index(gate) and uops.uops.index(s)<=uops.uops.index(end) for s in successors(u))):
         uops.uops.insert(uops.uops.index(gate), uops.uops.pop(uops.uops.index(u)))
-    gl.vin = gl.vin[:2]
+      # Move children that became out of order when grouping loads together after IF
+      elif any(sg in u.vin for sg in same_gate): uops.uops.insert(uops.uops.index(end), uops.uops.pop(uops.uops.index(u)))
 
 class PTXRenderer(Renderer):
   device = "CUDA"
@@ -212,10 +222,11 @@ class PTXRenderer(Renderer):
       elif uop is UOps.ENDIF:
         kk(f"@{_cast(r[vin[0].vin[0]], dtypes.bool, vin[0].vin[0].dtype, u=u, pred=True)} bra {r_label[vin[0]]}_true;")
         kk(f"{r_label[vin[0]]}:")
-        if len(vin) > 1 and vin[1].dtype.count > 1:
-          kk(*[f"mov.b{self.types[vin[1].dtype.scalar()][1:]} {dd}, {r[vin[2]][i]};" for i, dd in enumerate(r[vin[1]])])
-        elif len(vin) > 1:
-          kk(*[f"mov.b{self.types[vin[1].dtype][1:]} {r[vin[1]]}, {r[vin[2]]};" ])
+        for val, alt in list(zip(it:=iter(vin[1:]),it)):
+          if val.dtype.count > 1:
+            kk(*[f"mov.b{self.types[val.dtype.scalar()][1:]} {dd}, {r[alt][i]};" for i, dd in enumerate(r[val])])
+          else:
+            kk(*[f"mov.b{self.types[val.dtype][1:]} {r[val]}, {r[alt]};"])
         kk(f"{r_label[vin[0]]}_true:")
       elif uop is UOps.STORE:
         assert vin[0].dtype is not None and vin[1].dtype is not None and vin[2].dtype is not None
