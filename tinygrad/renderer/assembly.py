@@ -207,7 +207,7 @@ class PTXRenderer(Renderer):
           r[u] = r[vin[0]]
         elif uop in {UOps.CAST, UOps.BITCAST}:
           assert vin[0].dtype is not None
-          if dtype.count>1: r[u] = [r[x] for x in vin] # type: ignore
+          if dtype.count>1: r[u] = [_cast(r[x], dtype.scalar(), x.dtype.scalar(), bitcast=uop is UOps.BITCAST) for x in vin] # type: ignore
           else: _cast(r[vin[0]], dtype, vin[0].dtype, bitcast=uop is UOps.BITCAST, u=u)
         elif uop is UOps.DEFINE_LOCAL:
           # TODO: we should sum these, and fetch 0xC000 from somewhere
