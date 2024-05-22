@@ -15,6 +15,17 @@ def render_val(x, dtype):
     return "0f%02X%02X%02X%02X" % tuple(struct.pack("f",x)[::-1])
   return str(int(x)) + ("U" if dtypes.is_unsigned(dtype) else "")
 
+def fast_remainder(d,a,b,dt,name):
+  if dt == dtypes.int and b.isnumeric() and math.log2(int(b)).is_integer():
+    return f"""shr.u32  %rem0, {a}, 31;                                                         
+add.s32  %rem1, {a}, %rem0;                                                       
+and.b32   %rem2, %rem1, -{int(b)};                                                        
+sub.s32  {d}, {a}, %rem2;"""
+  return f"rem.{name} {d}, {a}, {b};"
+
+
+
+
 class PTXRenderer(Renderer):
   device = "CUDA"
   suffix = "PTX"
@@ -45,7 +56,7 @@ class PTXRenderer(Renderer):
     BinaryOps.MUL: lambda d,a,b,dt,name: ('and' if dt == dtypes.bool else 'mul') + f"{'.lo' if dtypes.is_int(dt) else ''}.{name} {d}, {a}, {b};",
     BinaryOps.XOR: lambda d,a,b,dt,name: f"xor.pred {d}, {a}, {b};" if name == "pred" else f"xor.b{name[1:]} {d}, {a}, {b};",
     BinaryOps.DIV: lambda d,a,b,dt,name: f"div{'.approx' if dtypes.is_float(dt) else ''}.{name} {d}, {a}, {b};",
-    BinaryOps.MAX: lambda d,a,b,dt,name: f"max.{name} {d}, {a}, {b};", BinaryOps.MOD: lambda d,a,b,dt,name: f"rem.{name} {d}, {a}, {b};",
+    BinaryOps.MAX: lambda d,a,b,dt,name: f"max.{name} {d}, {a}, {b};", BinaryOps.MOD: fast_remainder,
     BinaryOps.CMPLT: lambda d,a,b,dt,name: f"setp.lt.{name} {d}, {a}, {b};",
     BinaryOps.CMPEQ: lambda d,a,b,dt,name: f"setp.eq.{name} {d}, {a}, {b};",
     TernaryOps.MULACC: lambda d,a,b,c,dt,name: f"{'fma.rn' if dtypes.is_float(dt) else 'mad.lo'}.{name} {d}, {a}, {b}, {c};",
@@ -101,7 +112,7 @@ class PTXRenderer(Renderer):
             "\n}")
 
   def render(self, name:str, uops:UOpGraph) -> str:
-    kernel:List[str] = []
+    kernel:List[str] = [".reg            .b32 %rem<3>;"]
     bufs = []
 
     uops.linearize(ptx_matcher)
@@ -110,6 +121,7 @@ class PTXRenderer(Renderer):
     def kk(*s: str): kernel.append("\n".join(s))
 
     c: DefaultDict[str, int] = defaultdict(int)
+    # c["rem_b32"] = 3
     r: Dict[UOp, Union[List[str], str]] = {}
     def ssa(prefix:str, u:Optional[UOp]=None, dtype:Optional[str]=None) -> str:
       nonlocal c, r
