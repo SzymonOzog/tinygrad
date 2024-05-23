@@ -382,7 +382,7 @@ jobs:
           cache-name: cache-gpuocelot-build
         with:
           path: ${{ github.workspace }}/gpuocelot/ocelot
-          key: ubuntu22.04-gpuocelot-1840f425b7ca43af433196583cc81ef84480-rebuild-6
+          key: ubuntu22.04-gpuocelot-1840f7ca43af433196583cc81ef84480-rebuild-6
       - name: Clone/compile gpuocelot
         if: (matrix.backend == 'cuda' || matrix.backend == 'ptx' || matrix.backend == 'triton' || matrix.backend == 'nv') && steps.cache-build.outputs.cache-hit != 'true'
         run: |
