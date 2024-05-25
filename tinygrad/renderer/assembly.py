@@ -15,6 +15,52 @@ def render_val(x, dtype):
     return "0f%02X%02X%02X%02X" % tuple(struct.pack("f",x)[::-1])
   return str(int(x)) + ("U" if dtypes.is_unsigned(dtype) else "")
 
+def fast_remainder(d,a,b,dt,name):
+  if dtypes.is_int(dt) and b.isnumeric() and math.log2(int(b)).is_integer():
+    if dtypes.is_unsigned(dt):
+      return f"and b{name[1:]} {d}, {a}, {int(b)}"
+    else:
+      return (f"shr.b{name[1:]}  %rem_{name[1:]}_0, {a}, 31;\n"
+              f"add.{name}  %rem_{name[1:]}_1, {a}, %rem_{name[1:]}_0;\n"
+              f"and.b{name[1:]}   %rem_{name[1:]}_2, %rem_{name[1:]}_1, -{int(b)};\n"
+              f"sub.{name}  {d}, {a}, %rem_{name[1:]}_2;")
+  return f"rem.{name} {d}, {a}, {b};"
+
+def optimize_gated_loads(uops):
+  gated_loads = list(filter(lambda u:u.uop is UOps.LOAD and len(u.vin)>3, uops))
+  def successors(uop): return list(filter(lambda u: uop in u.vin, uops))
+  def contignous(l1, l2): return abs(l1.vin[1].arg - l2.vin[1].arg) < 100 or True
+  while gated_loads:
+    # same_gate = list(filter(lambda u: u.vin[0] == gated_loads[0].vin[0] and u.vin[2] == gated_loads[0].vin[2] and contignous(u, gated_loads[0]), gated_loads))
+    same_gate = list(filter(lambda u: u.vin[2] == gated_loads[0].vin[2], gated_loads))
+    gated_loads = [gl for gl in gated_loads if gl not in same_gate]
+    # Group same gate loads together 
+    for u in reversed(same_gate):
+      uops.insert(uops.index(same_gate[0]), uops.pop(uops.index(u)))
+      queue = [u] 
+      # print("next")
+      depth=1
+      while queue:
+        q = queue.pop()
+        # print("testing", q)
+        for p in q.vin:
+          if uops.index(q) < uops.index(p):
+            # print("Moving", p)
+            uops.insert(uops.index(same_gate[0])-depth, uops.pop(uops.index(p)))
+            depth+=1
+            queue.append(p)
+    uops.insert(min([uops.index(u) for u in same_gate]), gate:=UOp(UOps.IF, None, (same_gate[-1].vin[2],)))
+    uops.insert(max([uops.index(u) for u in same_gate])+1, end:=UOp(UOps.ENDIF, None, (gate,)))
+    for ld in same_gate:
+      end.vin += (ld, ld.vin[3])
+      ld.vin = ld.vin[:2]
+    for u in reversed(uops.copy()[:uops.index(gate)]):
+      # Move parents inside IF
+      if (u.uop in [UOps.ALU, UOps.CAST, UOps.BITCAST, UOps.CONST] and
+       all(uops.index(s)>uops.index(gate) and uops.index(s)<=uops.index(end) for s in successors(u))):
+        uops.insert(uops.index(gate), uops.pop(uops.index(u)))
+
+
 class PTXRenderer(Renderer):
   device = "CUDA"
   suffix = "PTX"
@@ -46,7 +92,7 @@ class PTXRenderer(Renderer):
     BinaryOps.MUL: lambda d,a,b,dt,name: ('and' if dt == dtypes.bool else 'mul') + f"{'.lo' if dtypes.is_int(dt) else ''}.{name} {d}, {a}, {b};",
     BinaryOps.XOR: lambda d,a,b,dt,name: f"xor.pred {d}, {a}, {b};" if name == "pred" else f"xor.b{name[1:]} {d}, {a}, {b};",
     BinaryOps.DIV: lambda d,a,b,dt,name: f"div{'.approx' if dtypes.is_float(dt) else ''}.{name} {d}, {a}, {b};",
-    BinaryOps.MAX: lambda d,a,b,dt,name: f"max.{name} {d}, {a}, {b};", BinaryOps.MOD: lambda d,a,b,dt,name: f"rem.{name} {d}, {a}, {b};",
+    BinaryOps.MAX: lambda d,a,b,dt,name: f"max.{name} {d}, {a}, {b};", BinaryOps.MOD: fast_remainder,
     BinaryOps.CMPLT: lambda d,a,b,dt,name: f"setp.lt.{name} {d}, {a}, {b};",
     BinaryOps.CMPEQ: lambda d,a,b,dt,name: f"setp.eq.{name} {d}, {a}, {b};",
     TernaryOps.MULACC: lambda d,a,b,c,dt,name: f"{'fma.rn' if dtypes.is_float(dt) else 'mad.lo'}.{name} {d}, {a}, {b}, {c};",
@@ -75,11 +121,10 @@ class PTXRenderer(Renderer):
 
   def render_loop(self, idx, start, label, acc=None) -> List[str]: return [f"mov.u32 {idx}, {start};", f"{label}:"]
 
-  def render_bra(self, b1, pred=None, b2=None) -> List[str]: return [f"@{pred} bra {b1};", f"@!{pred} bra {b2};"] if pred else [f"bra {b1};"]
+  def render_bra(self, b1, pred=None, neg=False) -> List[str]: return [f"@{'!' if neg else ''}{pred} bra {b1};"] if pred else [f"bra {b1};"]
 
   def render_load(self, loc, dest, dtype, gate=None, alt=None, ss="", offset=0) -> List[str]:
     assert dtype != dtypes.bool
-    if gate: return [f"@{gate} ld{ss}.{self.mem_types[dtype]} {dest}, [{loc}+{offset}];", f"@!{gate} mov.b{self.types[dtype][1:]} {dest}, {alt};"]
     return [f"ld{ss}.{self.mem_types[dtype]} {dest}, [{loc}+{offset}];"]
 
   def render_store(self, loc, val, dtype, gate=None, ss="", offset=0) -> List[str]:
@@ -102,10 +147,11 @@ class PTXRenderer(Renderer):
             "\n}")
 
   def render(self, name:str, uops:UOpGraph) -> str:
-    kernel:List[str] = []
+    kernel:List[str] = [".reg .u32 %rem_32_<3>;", ".reg .u64 %rem_64_<3>;"]
     bufs = []
 
     uops.linearize(ptx_matcher)
+    optimize_gated_loads(uops.uops)
     if DEBUG >= 4: uops.print()
 
     def kk(*s: str): kernel.append("\n".join(s))
@@ -144,14 +190,21 @@ class PTXRenderer(Renderer):
       uop,dtype,vin,args = u.uop,u.dtype,u.vin,u.arg
       if uop is UOps.IF:
         assert vin[0].dtype is not None
-        kk(*self.render_bra(lb:=ssa_label('if', u), _cast(r[vin[0]], dtypes.bool, vin[0].dtype, u=u, pred=True), f"{lb}_true"), f"{lb}_true:")
+        kk(*self.render_bra(ssa_label('if', u), _cast(r[vin[0]], dtypes.bool, vin[0].dtype, u=u, pred=True), neg=True))
       elif uop is UOps.BARRIER and self.barrier: kk(self.barrier)
       elif uop is UOps.ENDRANGE:
         kk(self.asm_for_op[BinaryOps.ADD](r[vin[0]], r[vin[0]], "1", dtypes.int, self.types[dtypes.int]),
             self.asm_for_op[BinaryOps.CMPLT](pred:=ssa("pred", dtype="pred"), r[vin[0]], r[vin[0].vin[1]], dtypes.int, self.types[dtypes.int]))
-        kk(*self.render_bra(r_label[vin[0]], pred, f"{r_label[vin[0]]}_exit"), f"{r_label[vin[0]]}_exit:")
+        kk(*self.render_bra(r_label[vin[0]], pred))
       elif uop is UOps.ENDIF:
+        kk(f"@{_cast(r[vin[0].vin[0]], dtypes.bool, vin[0].vin[0].dtype, u=u, pred=True)} bra {r_label[vin[0]]}_true;")
         kk(f"{r_label[vin[0]]}:")
+        for val, alt in list(zip(it:=iter(vin[1:]),it)):
+          if val.dtype.count > 1:
+            kk(*[f"mov.b{self.types[val.dtype.scalar()][1:]} {dd}, {r[alt][i]};" for i, dd in enumerate(r[val])])
+          else:
+            kk(*[f"mov.b{self.types[val.dtype][1:]} {r[val]}, {r[alt]};"])
+        kk(f"{r_label[vin[0]]}_true:")
       elif uop is UOps.STORE:
         assert vin[0].dtype is not None and vin[2].dtype is not None
         assert vin[0].dtype == dtypes.int64, "store isn't int64"
@@ -184,7 +237,7 @@ class PTXRenderer(Renderer):
           kernel = [f".reg .u32 %{args[1]};"] + kernel
         elif uop is UOps.CONST:
           if dtype.count > 1: r[u] = [const(args, dtype.scalar(), mov=True) for _ in range(dtype.count)]
-          else: r[u] = const(args, dtype, mov=True)
+          else: r[u] = const(args, dtype, mov=False)
         elif uop is UOps.GEP: r[u] = r[vin[0]][u.arg]
         elif uop is UOps.LOAD:
           assert vin[0].dtype == dtypes.int64, "load isn't int64"
@@ -192,10 +245,7 @@ class PTXRenderer(Renderer):
           mem_type = '.shared' if vin[0].uop is UOps.DEFINE_LOCAL or any(x.uop is UOps.DEFINE_LOCAL for x in vin[0].parents) else '.global'
           if dtype.count > 1:
             r[u] = [ssa('val', dtype=self.types[dtype.scalar()]) for _ in range(dtype.count)]
-            if(len(vin)>3):
-              for v in r[u]: kk(f"mov.{self.mem_types[dtype.scalar()]} {v}, {render_val(0, dtype.scalar())};")
-            kk((f"@{r[vin[2]]}"if len(vin) > 3 else "")
-              + f" ld{mem_type}.v{dtype.count}.{self.mem_types[dtype.scalar()]} {{{', '.join(r[u])}}}, [{r[vin[0]]}+{vin[1].arg}];")
+            kk(f"ld{mem_type}.v{dtype.count}.{self.mem_types[dtype.scalar()]} {{{', '.join(r[u])}}}, [{r[vin[0]]}+{vin[1].arg}];")
           else:
             kk(*self.render_load(r[vin[0]], ssa('val', u), dtype, gate=r[vin[2]] if len(vin) > 3 else None,
                                 alt=r[vin[3]] if len(vin) > 3 else None, ss=mem_type, offset=vin[1].arg))
