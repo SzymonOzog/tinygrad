@@ -163,6 +163,9 @@ def beam_search(lin:Linearizer, rawbufs:List[Buffer], amt:int, allow_test_size=T
     raise e
 
   if CACHELEVEL >= 1: diskcache_put("beam_search", key, beam[0][0].applied_opts)
+  with(open("sops_gptp", "a")) as f:
+    f.write(f"{lin.ast} | {beam[0][0].applied_opts}\n")
+
   if BEAM_DEBUG: print(f"BEAM_SEARCH: final tm={beam[0][1]*1e6:0.2f} us, applied_opts={beam[0][0].applied_opts}")
   return beam[0][0]
 

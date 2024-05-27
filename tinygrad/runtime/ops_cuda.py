@@ -54,7 +54,7 @@ def _get_bytes(arg, get_str, get_sz, check) -> bytes:
 class PTXCompiler(Compiler):
   def __init__(self, arch:str):
     self.arch = arch
-    self.version = "7.8" if arch >= "sm_89" else "7.5"
+    self.version = "7.8" if arch >= "sm_89" else "8.4"
     #PTXCompiler.compiler_opts = replace(PTXCompiler.compiler_opts, has_tensor_cores=int(arch[3:]) >= 80)
     super().__init__(f"compile_ptx_{self.arch}")
   def compile(self, src:str) -> bytes: return src.replace("TARGET", self.arch).replace("VERSION", self.version).encode()
