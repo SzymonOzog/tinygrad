@@ -342,7 +342,7 @@ class UOpGraph:
       if u.uop is UOps.STORE:
         priority += 1000
       if u.uop is UOps.RANGE:
-        priority += l.arg[0]*1000 + u.arg[1]
+        priority += u.arg[0]*1000 + u.arg[1]
       if u.uop not in [UOps.DEFINE_GLOBAL, UOps.RANGE]:
         priority += len(get_recursive_children(u))
       heapq.heappush(queue, (priority, u))
