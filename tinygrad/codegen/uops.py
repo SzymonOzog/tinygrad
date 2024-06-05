@@ -338,11 +338,11 @@ class UOpGraph:
       priority = 0
       # prefer uops that are loop children
       for l, ss in loops_children.items():
-        if u in ss: priority -= l.arg[0]*1000 + l.arg[1]
+        if u in ss: priority -= l.arg[0]*len(graph) + l.arg[1]
       if u.uop is UOps.STORE:
-        priority += 1000
+        priority += len(graph)
       if u.uop is UOps.RANGE:
-        priority += u.arg[0]*1000 + u.arg[1]
+        priority += u.arg[0]*len(graph) + u.arg[1]
       if u.uop not in [UOps.DEFINE_GLOBAL, UOps.RANGE]:
         priority += len(get_recursive_children(u))
       heapq.heappush(queue, (priority, u))
